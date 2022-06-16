@@ -82,7 +82,8 @@ def remove_outliers(df, k):
 	'lotsizesquarefeet',
 	'taxvaluedollarcnt',
     'yearbuilt',
-	'taxamount']
+	'taxamount',
+    'logerror']
 
     for col in columns:
         # Get quartiles
@@ -138,4 +139,32 @@ def split_zillow_data(df):
                                    
     return train, validate, test
 
-
+def scale_data(train,
+              validate,
+              test,
+              columns_to_scale=['longitude', 'latitude','yearbuilt','calculatedfinishedsquarefeet','bathroomcnt',
+              'bedroomcnt','lotsizesquarefeet','taxvaluedollarcnt']):
+    '''
+    Scales the split data.
+    Takes in train, validate and test data and returns the scaled data.
+    '''
+    train_scaled = train.copy()
+    validate_scaled = validate.copy()
+    test_scaled = test.copy()
+    
+    #using MinMaxScaler (best showing distribution once scaled)
+    scaler = sklearn.preprocessing.MinMaxScaler()
+    scaler.fit(train[columns_to_scale])
+    
+    #creating a df that puts MinMaxScaler to work on the wanted columns and returns the split datasets and counterparts
+    train_scaled[columns_to_scale] = pd.DataFrame(scaler.transform(train[columns_to_scale]),
+                                                 columns=train[columns_to_scale].columns.values).set_index([train.index.values])
+    
+    validate_scaled[columns_to_scale] = pd.DataFrame(scaler.transform(validate[columns_to_scale]),
+                                                 columns=validate[columns_to_scale].columns.values).set_index([validate.index.values])
+    
+    test_scaled[columns_to_scale] = pd.DataFrame(scaler.transform(test[columns_to_scale]),
+                                                 columns=test[columns_to_scale].columns.values).set_index([test.index.values])
+    
+    
+    return train_scaled, validate_scaled, test_scaled
