@@ -14,9 +14,6 @@ def get_zillow_data():
     else:
         sql = '''SELECT *
         FROM properties_2017
-        JOIN (SELECT parcelid, MAX(transactiondate) AS max_transactiondate
-                FROM predictions_2017
-                GROUP BY parcelid) pred USING(parcelid)
         JOIN predictions_2017 USING (parcelid)
         LEFT JOIN architecturalstyletype USING (architecturalstyletypeid)
         LEFT JOIN propertylandusetype USING (propertylandusetypeid)
@@ -52,40 +49,82 @@ def handle_missing_values(df, prop_required_column, prop_required_row):
     df.dropna(axis=1, thresh=threshold, inplace=True)
     threshold = int(round(prop_required_row*len(df.columns),0))
     df.dropna(axis=0, thresh=threshold, inplace=True)
+    # remove additional rows with remaining nulls
+    df = df.dropna()
     return df
 
 
-def handle_outliers(df, cols, k):
-    # Create placeholder dictionary for each columns bounds
-    bounds_dict = {}
+cols_to_remove = ['parcelid', 'propertylandusetypeid', 'id','calculatedbathnbr', 
+    'finishedsquarefeet12', 'fullbathcnt', 'propertycountylandusecode',
+    'rawcensustractandblock','regionidcounty', 'roomcnt', 'structuretaxvaluedollarcnt',
+    'assessmentyear', 'landtaxvaluedollarcnt', 'censustractandblock', 'id']
 
-    # get a list of all columns that are not object type
-    non_object_cols = df.dtypes[df.dtypes != 'object'].index
+def remove_columns(df, cols_to_remove):
+    df = df.drop(columns=cols_to_remove)
+    return df
 
+def map_counties(df):
+    # identified counties for fips codes 
+    counties = {6037: 'Los_Angeles',
+                6059: 'Orange',
+                6111: 'Ventura'}
+    # map counties to fips codes
+    df.fips = df.fips.map(counties)
+    return df
 
-    for col in non_object_cols:
-        # get necessary iqr values
-        q1 = df[col].quantile(0.25)
-        q3 = df[col].quantile(0.75)
-        iqr = q3 - q1
-        upper_bound =  q3 + k * iqr
-        lower_bound =  q1 - k * iqr
+def remove_outliers(df, k):
+    ''' Take in a dataframe, k value, and specified columns within a dataframe 
+    and then return the dataframe with outliers removed
+    '''
+    columns=['bathroomcnt',
+	'bedroomcnt',
+	'calculatedfinishedsquarefeet',
+	'lotsizesquarefeet',
+	'taxvaluedollarcnt',
+    'yearbuilt',
+	'taxamount']
 
-        #store values in a dictionary referencable by the column name
-        #and specific bound
-        bounds_dict[col] = {}
-        bounds_dict[col]['upper_bound'] = upper_bound
-        bounds_dict[col]['lower_bound'] = lower_bound
+    for col in columns:
+        # Get quartiles
+        q1, q3 = df[col].quantile([.25, .75]) 
+        # Calculate interquartile range
+        iqr = q3 - q1 
+        
+        upper_bound = q3 + k * iqr   # get upper bound
+        lower_bound = q1 - k * iqr   # get lower bound
 
-    for col in non_object_cols:
-        #retrieve bounds
-        col_upper_bound = bounds_dict[col]['upper_bound']
-        col_lower_bound = bounds_dict[col]['lower_bound']
-
-        #remove rows with an outlier in that column
-        df = df[(df[col] < col_upper_bound) & (df[col] > col_lower_bound)]
+        # return dataframe without outliers
+        
+        df = df[(df[col] > lower_bound) & (df[col] < upper_bound)]
+        
+    return df
+def integers(df):
+    df['calculatedfinishedsquarefeet'] = df['calculatedfinishedsquarefeet'].astype(int)
+    df['bedroomcnt'] = df['bedroomcnt'].astype(int)
+    df['latitude'] = df['latitude'].astype(int)
+    df['longitude'] = df['longitude'].astype(int)
+    df['lotsizesquarefeet'] = df['lotsizesquarefeet'].astype(int)
+    df['regionidcity'] = df['regionidcity'].astype(int)
+    df['regionidzip'] = df['regionidzip'].astype(int)
+    df['yearbuilt'] = df['yearbuilt'].astype(int)
+    df['taxvaluedollarcnt'] = df['taxvaluedollarcnt'].astype(int)
+    df['taxamount'] = df['taxamount'].astype(int)
+    return df
     
+
+
+
+
+def prepare_zillow_data(df):
+    df = handle_missing_values(df,.7,.7)
+    df = remove_outliers(df,k=1.5)
+    df = map_counties(df)
+    df = remove_columns(df,cols_to_remove)
+    df = integers(df)
     return df
+
+
+
 
 
 def split_zillow_data(df):
@@ -98,3 +137,5 @@ def split_zillow_data(df):
                                    random_state=123) 
                                    
     return train, validate, test
+
+
